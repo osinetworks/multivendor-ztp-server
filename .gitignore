@@ -1,0 +1,73 @@
+# ============================================================
+# ZTP Server — .gitignore
+#
+# NOTE: .gitignore does NOT apply to files git already tracks.
+#       If you add a rule for an already-committed file, also run:
+#           git rm --cached <file>
+# ============================================================
+
+# --- Environment & secrets ---
+.env
+.env.*
+!.env.example
+secrets.yaml
+
+# --- Site variable files (contain password hashes) ---
+# Commit config.yaml.template instead.
+config/config.yaml
+config/config_*.yaml
+
+# --- Inventory with real serial numbers ---
+# Commit inventory.yaml.template instead.
+config/inventory.yaml
+config/inventory.*.yaml
+config/*.bck
+config/*.bak
+
+# --- Firmware images (large binaries — use a file server) ---
+firmware/*.bin
+firmware/*.swi
+firmware/*.swi.gz
+firmware/*.md5
+firmware/*.md5sum
+firmware/*.sha256
+
+# --- Per-device configs (contain credential hashes) ---
+configs/*.cfg
+
+# --- Device backups (full running-config of production switches) ---
+backups/
+
+# --- Ad-hoc deployment inputs (real IPs / real config) ---
+scripts/device.lst
+scripts/device_config.cfg
+
+# --- Logs & runtime state ---
+logs/
+*.log
+ztp_state.json
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# --- Docker ---
+.dockerignore
+
+# --- Editor & OS ---
+.DS_Store
+.idea/
+.vscode/
+*.code-workspace
+*.swp
+*.swo
+Thumbs.db
+
+# --- Scratch / working dirs ---
+old/
+org/
+tmp/

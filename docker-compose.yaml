@@ -1,0 +1,74 @@
+services:
+  ztp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ztp-server:latest
+    container_name: ztp-server
+    restart: unless-stopped
+
+    # Host networking gives dnsmasq full access to the physical interface
+    # for DHCP. Use bridge mode only if you know what you're doing.
+    network_mode: host
+
+    environment:
+      # --- Read from .env ---
+      # Every one of these carries a default: an .env that is missing or is
+      # missing a key used to expand to an empty string, and the server died on
+      # int("") at import time. ':-' also covers a key that is present but blank.
+      - ZTP_SERVER_IP=${SERVER_IP:-169.254.254.1}
+      - ZTP_PORT=${HTTP_PORT:-8080}
+      - ZTP_INTERFACE=${INTERFACE:-}
+      - PRIORITY_WAIT_TIMEOUT=${PRIORITY_WAIT_TIMEOUT:-1800}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # Config served when a switch's own <serial>.cfg is missing
+      - DEFAULT_CONFIG=${DEFAULT_CONFIG:-generic.cfg}
+
+      # dnsmasq template substitution values (used by entrypoint.sh)
+      - DHCP_RANGE_START=${DHCP_RANGE_START:-169.254.254.100}
+      - DHCP_RANGE_END=${DHCP_RANGE_END:-169.254.254.200}
+      - DHCP_SUBNET=${DHCP_SUBNET:-255.255.255.0}
+      - DHCP_LEASE=${DHCP_LEASE:-1h}
+      - DNS_SERVER=${DNS_SERVER:-1.1.1.1,8.8.8.8}
+
+      # --- Fixed values (not network-specific) ---
+      - ZTP_HOST=0.0.0.0
+      - ZTP_BASE_DIR=/var/www/ztp
+      - INVENTORY_PATH=/var/www/ztp/config/inventory.yaml
+      - LOG_DIR=/var/www/ztp/logs
+
+    volumes:
+      # Config DIRECTORY, not individual files. Two reasons:
+      #  1. The server rewrites inventory.yaml (POST/DELETE /api/switches) with
+      #     a temp file + rename. Renaming onto a single-file bind mount fails
+      #     with EBUSY, so those writes were silently lost.
+      #  2. Editors (vim, VS Code) save by replacing the file, which changes the
+      #     inode. A single-file mount then keeps showing the container the OLD
+      #     file forever, and './start.sh reload' reloads nothing.
+      - ./config:/var/www/ztp/config
+
+      # Bootstrap scripts (editable without rebuild). Mounted as a DIRECTORY
+      # for the same inode reason as ./config above: with single-file mounts an
+      # edited bootstrap script kept being served in its pre-edit form.
+      - ./scripts:/var/www/ztp/scripts:ro
+
+      # Switch-specific and generic configs
+      - ./configs:/var/www/ztp/configs
+
+      # Firmware images (large files, keep outside image)
+      - ./firmware:/var/www/ztp/firmware
+
+      # Persistent logs
+      - ./logs:/var/www/ztp/logs
+
+    # Required for dnsmasq to serve DHCP
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:${HTTP_PORT:-8080}/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

@@ -1,0 +1,250 @@
+!
+username admin privilege 15 role network-admin secret sha512 {{ admin_password_hash }}
+{% if custom_username %}
+username {{ custom_username }} privilege 15 role network-admin secret sha512 {{ custom_user_password_hash }}
+{% endif %}
+enable password sha512 {{ enable_password_hash }}
+no aaa root
+!
+management api http-commands
+   no shutdown
+!
+alias cc clear counters
+alias ls bash ls -lrt /var/log/agents
+alias senz show interface counter error | nz
+alias snz show interface counter | nz
+alias spd show port-channel %1 detail all
+alias sqnz show interface counter queue | nz
+alias srnz show interface counter rate | nz
+!
+no service interface inactive port-id allocation disabled
+!
+service routing protocols model multi-agent
+!
+lldp management-address Vlan{{ mgmt_svi_vlan }}
+!
+logging repeat-messages
+logging buffered 65000
+logging trap debugging
+logging monitor informational
+logging format timestamp traditional year
+logging source-interface Vlan{{ mgmt_svi_vlan }}
+!
+hostname {{ hostname }}
+!
+vrf instance {{ mgmt_vrf_name }}
+!
+clock timezone {{ timezone }}
+!
+vlan 1
+   state suspend
+!
+vlan {{ mgmt_svi_vlan }}
+   name {{ mgmt_svi_name }}
+!
+spanning-tree mode mstp
+!
+system l1
+   unsupported speed action error
+   unsupported error-correction action error
+!
+aaa authorization exec default local
+!
+! Management1 is the physical out-of-band port and lives in the MGMT VRF,
+! whose default route points at the OOB/ZTP gateway (mgmt_gateway). It is only
+! addressed when a DISTINCT mgmt_ip is supplied — the generator blanks it out
+! rather than repeating the SVI address on two interfaces.
+interface Management1
+   vrf {{ mgmt_vrf_name }}
+{% if mgmt_ip %}
+   ip address {{ mgmt_ip }}
+{% endif %}
+!
+! In-band management SVI. Deliberately in the GLOBAL routing table, not in the
+! MGMT VRF: it is reached by inter-VLAN routing via the firewall.
+interface Vlan{{ mgmt_svi_vlan }}
+   description MGMT SVI
+   no autostate
+{% if mgmt_svi_ip_address %}
+   ip address {{ mgmt_svi_ip_address }}
+{% endif %}
+!
+ip routing
+ip routing vrf {{ mgmt_vrf_name }}
+!
+! Out-of-band: Management1 reaches the world through the OOB/ZTP gateway.
+ip route vrf {{ mgmt_vrf_name }} 0.0.0.0/0 {{ mgmt_gateway }}
+{% if inband_gateway is defined and inband_gateway %}
+! In-band: the MGMT SVI sits in the global table and is reached by inter-VLAN
+! routing via the firewall, so the global table needs its own default route —
+! without it the switch can only answer hosts inside the SVI's own subnet.
+ip route 0.0.0.0/0 {{ inband_gateway }}
+{% endif %}
+!
+{% for ntp in ntp_servers %}
+ntp server {{ ntp.ip }}{% if ntp.prefer %} prefer{% endif %}{% if ntp.iburst %} iburst{% endif %}
+{% endfor %}
+!
+management ssh
+   vrf {{ mgmt_vrf_name }}
+      no shutdown
+!
+{% if 'edge' not in tags %}
+vlan {{ mlag_vlan }}
+   trunk group MLAGPEER
+!
+interface {{ mlag_porchannel }}
+   description MLAG-PEER-Link
+   switchport mode trunk
+   switchport trunk group MLAGPEER
+!
+
+interface Vlan{{ mlag_vlan }}
+   description MLAG Peer Link
+   no autostate
+{% if local_mlag_ip %}
+   ip address {{ local_mlag_ip }}{{ leaf_mlag_subnet }}
+   no shutdown
+{% endif %}
+!
+
+mlag configuration
+   domain-id {{ mlag_domain_id | default('LEAF_DOMAIN') }}
+   local-interface Vlan{{ mlag_vlan }}
+   peer-address {{ peer_mlag_ip }}
+   peer-link {{ mlag_porchannel }}
+   reload-delay mlag 330
+   reload-delay non-mlag 300
+!
+{% endif %}
+no spanning-tree vlan-id {{ mlag_vlan }}
+no spanning-tree bpduguard rate-limit default
+
+spanning-tree mst 0 priority {{ stp_priority | default(default_priority) }}
+
+{% if 'edge' in tags %}
+spanning-tree mst pvst border
+!
+{% for intf in edge_edge_interfaces | default('Eth1-24') | expand_interfaces %}
+interface {{ intf }}
+   storm-control broadcast level 0.1
+   storm-control multicast level 0.1
+   spanning-tree portfast edge
+   spanning-tree bpduguard enable
+!
+{% endfor %}
+{% if edge_to_leaf_uplink_portchannel %}
+interface {{ edge_to_leaf_uplink_portchannel }}
+   description {{ hostname }} to CA-NW-LEAF
+   switchport mode trunk
+   
+{% for intf in edge_to_leaf_uplink | expand_interfaces %}
+interface {{ intf }}
+   description {{ hostname }} to CA-NW-LEAF
+   channel-group {{ edge_to_leaf_uplink_portchannel | replace('Port-Channel', '') }} mode active
+!
+{% endfor %}
+{% endif %}
+{% endif %}
+{% if 'leaf' in tags %}
+{% for intf in leaf_mlag_interface | default('Eth47-48') | expand_interfaces %}
+interface {{ intf }}
+   description MLAG-PEER-Link
+   channel-group {{ mlag_porchannel | replace('Port-Channel', '') | default('100') }} mode active
+!
+{% endfor %}
+{% if leaf_to_spine_uplink_portchannel %}
+interface {{ leaf_to_spine_uplink_portchannel }}
+   description {{ hostname }} to CA-NW-SPINE
+   switchport mode trunk
+   mlag {{ leaf_to_spine_uplink_portchannel | replace('Port-Channel', '') }}
+!
+{% for intf in leaf_to_spine_uplink | expand_interfaces %}
+interface {{ intf }}
+   description {{ hostname }} to CA-NW-SPINE
+   channel-group {{ leaf_to_spine_uplink_portchannel | replace('Port-Channel', '') }} mode active
+!
+{% endfor %}
+{% endif %}
+{% if leaf_to_edge_downlink_portchannel %}
+interface {{ leaf_to_edge_downlink_portchannel }}
+   description {{ hostname }} to CA-NW-MGMT
+   switchport mode trunk
+   mlag {{ leaf_to_edge_downlink_portchannel | replace('Port-Channel', '') }}
+!
+{% for intf in leaf_to_edge_downlink | expand_interfaces %}
+interface {{ intf }}
+   description {{ hostname }} to CA-NW-MGMT
+   channel-group {{ leaf_to_edge_downlink_portchannel | replace('Port-Channel', '') }} mode active
+!
+{% endfor %}
+{% endif %}
+{% endif %}
+{% if 'spine' in tags %}
+{% if spine_mlag_interface %}
+{% for intf in spine_mlag_interface | expand_interfaces %}
+interface {{ intf }}
+   description MLAG-PEER-Link
+   channel-group {{ spine_mlag_interface_portchannel | replace('Port-Channel', '') | default('100') }} mode active
+!
+{% endfor %}
+{% endif %}
+
+{% if spine_to_leaf1_downlink %}
+interface {{ spine_to_leaf1_downlink_portchannel }}
+   description {{ hostname }} to CA-NW-LEAF01-02
+   switchport mode trunk
+   mlag {{ spine_to_leaf1_downlink_portchannel | replace('Port-Channel', '') }}
+!
+{% for intf in spine_to_leaf1_downlink | expand_interfaces %}
+interface {{ intf }}
+   description {{ hostname }} to CA-NW-LEAF01-02
+   channel-group {{ spine_to_leaf1_downlink_portchannel | replace('Port-Channel', '') }} mode active
+!
+{% endfor %}
+{% endif %}
+!
+{% if spine_to_leaf3_downlink %}
+interface {{ spine_to_leaf3_downlink_portchannel }}
+   description {{ hostname }} to CA-NW-LEAF03-04
+   switchport mode trunk
+   mlag {{ spine_to_leaf3_downlink_portchannel | replace('Port-Channel', '') }}
+!
+{% for intf in spine_to_leaf3_downlink | expand_interfaces %}
+interface {{ intf }}
+   description {{ hostname }} to CA-NW-LEAF03-04
+   channel-group {{ spine_to_leaf3_downlink_portchannel | replace('Port-Channel', '') }} mode active
+!
+{% endfor %}
+{% endif %}
+!
+{% if spine_to_leaf5_downlink %}
+interface {{ spine_to_leaf5_downlink_portchannel }}
+   description {{ hostname }} to CA-NW-LEAF05-06
+   switchport mode trunk
+   mlag {{ spine_to_leaf5_downlink_portchannel | replace('Port-Channel', '') }}
+!  
+{% for intf in spine_to_leaf5_downlink | expand_interfaces %}
+interface {{ intf }}
+   description {{ hostname }} to CA-NW-LEAF05-06
+   channel-group {{ spine_to_leaf5_downlink_portchannel | replace('Port-Channel', '') }} mode active
+!
+{% endfor %}
+{% endif %}
+!
+{% if spine_to_leaf7_downlink %}
+interface {{ spine_to_leaf7_downlink_portchannel }}
+   description {{ hostname }} to CA-NW-LEAF07-08
+   switchport mode trunk
+   mlag {{ spine_to_leaf7_downlink_portchannel | replace('Port-Channel', '') }}
+!  
+{% for intf in spine_to_leaf7_downlink | expand_interfaces %}
+interface {{ intf }}
+   description {{ hostname }} to CA-NW-LEAF07-08
+   channel-group {{ spine_to_leaf7_downlink_portchannel | replace('Port-Channel', '') }} mode active
+!
+{% endfor %}
+{% endif %}
+!
+{% endif %}
+end

@@ -1,0 +1,117 @@
+# ============================================================
+# Site variable template.
+#   cp config/config.yaml.template config/config.yaml
+# config/config.yaml is gitignored — it holds real password hashes.
+# ============================================================
+# Network Configuration Variables - TUCA Site Example
+# This file contains all variables needed to generate an Arista switch configuration
+
+# ============================================================================
+# SITE IDENTIFICATION
+# ============================================================================
+hostname: "[HOSTNAME]"
+#
+mgmt_vrf_name: "MGMT"
+mgmt_gateway: "169.254.254.1"
+
+# Default gateway for the GLOBAL routing table, where the in-band MGMT SVI
+# lives. This is the firewall that does the inter-VLAN routing.
+# mgmt_gateway above is a different thing: it serves the MGMT VRF / Management1
+# out-of-band port.
+inband_gateway: ""   # e.g. "172.18.10.1"
+mgmt_svi_vlan: "2010"
+mgmt_svi_name: "MGMT_SVI"
+
+# NTP Servers
+timezone: "Europe/Istanbul"
+ntp_servers:
+  - ip: "172.18.10.1"
+    prefer: true
+    iburst: true
+
+# STP Configuration
+# Note: Arista Spanning-Tree (MSTP) priorities MUST be multiples of 4096.
+# (e.g. 0, 4096, 8192, 12288, 16384, 20480, 24576, 28672, 32768, etc.)
+default_priority: "4096"
+spine_stp_priority: "0"
+leaf_stp_priority: "4096"
+edge_stp_priority: "8192"
+
+# MLAG
+mlag_vlan: "4094"
+mlag_porchannel: "Port-Channel100"
+leaf_mlag_subnet: "/31"
+leaf1_mlag_ip: "169.254.0.0"
+leaf2_mlag_ip: "169.254.0.1"
+leaf3_mlag_ip: "169.254.0.2"
+leaf4_mlag_ip: "169.254.0.3"
+leaf5_mlag_ip: "169.254.0.4"
+leaf6_mlag_ip: "169.254.0.5"
+leaf7_mlag_ip: "169.254.0.6"
+leaf8_mlag_ip: "169.254.0.7"
+spine1_mlag_ip: "169.254.0.10"
+spine2_mlag_ip: "169.254.0.11"
+
+# ----------------------------------------------------------------------------
+# INTERFACE BINDINGS
+# ----------------------------------------------------------------------------
+# Note: You can safely use ranges here (e.g., "Eth23-24" or "Eth25/1-26/1") or
+# comma-separated lists (e.g. "Eth1, Eth3"). The ZTP generator script will
+# dynamically unroll these into individual interface blocks automatically!
+
+leaf_mlag_interface: "Eth23-24"
+leaf_to_spine_uplink: "Eth25/1-26/1"
+leaf_to_spine_uplink_portchannel: "Port-Channel25"
+
+leaf_to_edge_downlink: "Eth22"
+leaf_to_edge_downlink_portchannel: "Port-Channel22"
+
+edge_to_leaf_uplink: "Eth25-26"
+edge_to_leaf_uplink_portchannel: "Port-Channel25"
+
+spine_mlag_interface: "Eth29/1-32/1"
+spine_mlag_interface_portchannel: "29"
+
+spine_to_leaf1_downlink: "Eth1-2"
+spine_to_leaf1_downlink_portchannel: "Port-Channel1"
+
+spine_to_leaf3_downlink: "Eth3-4"
+spine_to_leaf3_downlink_portchannel: "Port-Channel3"
+
+spine_to_leaf5_downlink: "Eth5-6"
+spine_to_leaf5_downlink_portchannel: "Port-Channel5"
+
+spine_to_leaf7_downlink: "Eth7-8"
+spine_to_leaf7_downlink_portchannel: "Port-Channel7"
+
+edge_edge_interfaces: "Eth1-24"
+
+# ============================================================================
+# SECURITY CREDENTIALS
+# ============================================================================
+# Generate password hashes using: openssl passwd -6
+enable_password_hash: "REPLACE_ME__generate_with:_openssl_passwd_-6"
+admin_password_hash: "REPLACE_ME__generate_with:_openssl_passwd_-6"
+
+# Optional custom user
+custom_username: "cvpadmin"
+custom_user_password_hash: "REPLACE_ME__generate_with:_openssl_passwd_-6"
+
+# ---- Cisco IOS XE — REQUIRED for any cisco_ios switch ------------------
+# IOS accepts type 5 ($1$), 8 ($8$) and 9 ($9$) secrets. It does not reject
+# the $6$ SHA-512 hashes above: it treats them as a CLEARTEXT password and
+# hashes the literal '$6$...' text, so the login password silently becomes
+# the hash string. The generator therefore refuses to render a cisco_ios
+# switch until these are set — delete them if your inventory is Arista-only.
+# Generate on any IOS XE box:
+#   conf t ; username tmp algorithm-type sha256 secret <password>
+#   show run | include username tmp
+cisco_admin_password_hash: "REPLACE_ME__IOS_type8_or_9_hash"
+cisco_custom_user_password_hash: "REPLACE_ME__IOS_type8_or_9_hash"  # if custom_username is set
+# cisco_enable_password_hash: "$8$..."        # optional
+
+# ============================================================================
+# VENDOR IDENTIFICATION
+# ============================================================================
+vendor: "arista"
+template: "arista_config.j2"

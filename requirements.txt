@@ -1,0 +1,19 @@
+# ============================================================
+# Host-side tooling requirements
+#
+#   python3 -m venv venv && . venv/bin/activate
+#   pip install -r requirements.txt
+#
+# The ZTP server container does NOT use this file — Dockerfile installs
+# flask / requests / pyyaml / gunicorn from Alpine packages (py3-*).
+# ============================================================
+
+# generate_generic_config.py — renders configs/*.cfg from templates/
+Jinja2>=3.1
+PyYAML>=6.0
+
+# scripts/ztp_cli.py — talks to the ZTP server REST API
+requests>=2.31
+
+# scripts/backup_switches.py, scripts/deploy_config.py — SSH to switches
+netmiko>=4.3

@@ -1,0 +1,217 @@
+# ============================================================
+# Multi-Vendor ZTP Inventory Template
+# ============================================================
+# USAGE:
+#   cp inventory.yaml.template inventory.yaml
+#   Edit inventory.yaml with your real switch serials and filenames.
+#
+# IMPORTANT — inventory.yaml is in .gitignore (contains real serials).
+#             This template is what you commit to git instead.
+# ============================================================
+
+
+# -----------------------------------------------------------
+# Global defaults
+# Applied to any switch whose serial is NOT listed below.
+# Useful for homogeneous environments or as a safety net.
+# -----------------------------------------------------------
+defaults:
+  platform: eos                   # eos | eos64 | cisco_ios
+  firmware: EOS-4.34.3M.swi       # default EOS image filename
+  config:   generic.cfg           # fallback served when <serial>.cfg is missing
+  priority: 99                    # unregistered switches provision last
+  # customer: acme                # optional: config set for the whole inventory
+
+
+# -----------------------------------------------------------
+# Per-switch definitions
+# -----------------------------------------------------------
+#
+# --- Used by the ZTP server -------------------------------------------------
+#
+#   serial        Switch serial number (case-insensitive, auto-uppercased).
+#                 This is the lookup key for everything below.
+#
+#   platform      One of:
+#                   eos        — Arista EOS (32-bit, all platforms)
+#                   eos64      — Arista EOS64 (64-bit, newer platforms)
+#                   cisco_ios  — Cisco IOS XE (Cat9k family)
+#                 Selects which bootstrap the switch is pointed at, and which
+#                 template family the config generator may use.
+#
+#   firmware      Filename of the image to install (must exist in
+#                 /var/www/ztp/firmware/ on the ZTP server).
+#                 Arista : <name>.swi  or  <name>.swi.gz
+#                 Cisco  : cat9k_iosxe.<version>.SPA.bin
+#                          cat9k_lite_iosxe.<version>.SPA.bin  (C9200L)
+#                 A switch already booted from this image skips the download
+#                 and the install.
+#
+#   firmware_md5  Optional MD5 of the image, used only when no checksum file
+#                 is published next to it. The preferred place for a checksum
+#                 is firmware/<image>.md5:
+#                     cd firmware && md5sum <image> > <image>.md5
+#                 That file is what both bootstraps check against; this field
+#                 is the fallback for the Cisco path.
+#
+#   priority      Provisioning order — integer, lower = first.
+#                 Switches at the SAME priority provision in PARALLEL.
+#                 A switch at priority N waits until ALL switches at
+#                 priority < N have reported ztp_complete (success or
+#                 failure), or until PRIORITY_WAIT_TIMEOUT expires.
+#
+#                 Example ordering:
+#                   priority 1 (parallel) → core switches first
+#                   priority 2 (parallel) → distribution, after core done
+#                   priority 3            → access, after distribution done
+#
+#   description   Human-readable label for the dashboard and logs. Optional;
+#                 'hostname' is used when it is absent.
+#
+# NOTE: the config file is ALWAYS served as <serial>.cfg — there is no
+#       per-switch 'config:' key. Only 'defaults.config' matters, as the
+#       fallback for a switch whose own .cfg file is missing.
+#
+# --- Used by generate_generic_config.py (host-side) -------------------------
+#
+#   hostname      Switch hostname. Rendered into the config, used as the
+#                 dashboard label when 'description' is absent, and used by
+#                 scripts/backup_switches.py to name backup files.
+#
+#   ip_address    Management address in CIDR form ("172.18.10.11/24").
+#                 Rendered as the OOB Management1 / GigabitEthernet0/0 address.
+#                 When it is identical to mgmt_svi_ip_address the generator
+#                 leaves the OOB port unaddressed — one address cannot live on
+#                 two interfaces.
+#
+#   mgmt_svi_ip_address
+#                 In-band management SVI address, CIDR form.
+#
+#   tags          Free-form labels. NOT used by the ZTP server, but the config
+#                 generator does use them:
+#                   - 'spine' / 'leaf' / 'edge' select STP priority and which
+#                     interface blocks are rendered
+#                   - a tag matching a key under 'sites:' in the variable file
+#                     selects that site's block
+#
+#   customer      Selects the config set used by generate_generic_config.py:
+#                   vars     -> config/config_<customer>.yaml
+#                   template -> arista_config_template_<customer>.j2  (eos/eos64)
+#                               cisco_config_template_<customer>.j2   (cisco_ios)
+#                 Omit it (or leave empty) for the default set:
+#                   config/config.yaml + arista_config.j2 / cisco_config.j2.
+#                 Can also be set once under 'defaults:' for the whole inventory.
+#
+#   vars_file     Explicit variable file, repo-relative. Overrides 'customer'.
+#   template      Explicit template filename. Overrides 'customer'. Must belong
+#                 to the switch's own platform family.
+#
+# -----------------------------------------------------------
+
+switches:
+
+  # ----------------------------------------------------------
+  # Priority 1 — Core / Uplink switches (provision first)
+  # All priority-1 switches boot simultaneously.
+  # ----------------------------------------------------------
+
+  - serial: CHANGE_ME_SERIAL_1
+    hostname: "CORE-SW-1"
+    description: "Core-SW-1"
+    platform: eos
+    firmware: EOS-4.34.3M.swi
+    firmware_md5: ""              # prefer firmware/EOS-4.34.3M.swi.md5
+    ip_address: "172.18.10.11/24"
+    mgmt_svi_ip_address: "172.18.10.11/24"
+    priority: 1
+    tags:
+      - spine
+      - rack-a
+
+  - serial: CHANGE_ME_SERIAL_2
+    hostname: "CORE-SW-2"
+    description: "Core-SW-2"
+    platform: eos64
+    firmware: EOS64-4.34.3M.swi
+    firmware_md5: ""
+    ip_address: "172.18.10.12/24"
+    mgmt_svi_ip_address: "172.18.10.12/24"
+    priority: 1                   # parallel with Core-SW-1
+    tags:
+      - spine
+      - rack-b
+
+  # ----------------------------------------------------------
+  # Priority 2 — Distribution / Management switches
+  # Wait for ALL priority-1 switches to complete before starting.
+  # ----------------------------------------------------------
+
+  - serial: CHANGE_ME_SERIAL_3
+    hostname: "DIST-SW-1"
+    description: "Dist-SW-1"
+    platform: cisco_ios
+    firmware: cat9k_iosxe.17.12.05.SPA.bin
+    firmware_md5: ""
+    ip_address: "172.18.10.21/24"
+    mgmt_svi_ip_address: "172.18.20.21/24"
+    priority: 2
+    tags:
+      - leaf
+      - mgmt
+
+  # ----------------------------------------------------------
+  # Priority 3 — Access switches (C9200L — uses AutoInstall)
+  # Wait for ALL priority-2 switches to complete before starting.
+  # Note: C9200L uses cat9k_LITE image and AutoInstall (no Guest Shell).
+  # ----------------------------------------------------------
+
+  - serial: CHANGE_ME_SERIAL_4
+    hostname: "ACCESS-SW-1"
+    description: "Access-SW-1"
+    platform: cisco_ios
+    firmware: cat9k_lite_iosxe.17.12.05.SPA.bin
+    firmware_md5: ""
+    ip_address: "172.18.10.31/24"
+    mgmt_svi_ip_address: "172.18.20.31/24"
+    priority: 3
+    tags:
+      - edge
+      - floor-1
+
+  - serial: CHANGE_ME_SERIAL_5
+    hostname: "ACCESS-SW-2"
+    description: "Access-SW-2"
+    platform: cisco_ios
+    firmware: cat9k_lite_iosxe.17.12.05.SPA.bin
+    firmware_md5: ""
+    ip_address: "172.18.10.32/24"
+    mgmt_svi_ip_address: "172.18.20.32/24"
+    priority: 3                   # parallel with Access-SW-1
+    tags:
+      - edge
+      - floor-2
+
+
+# -----------------------------------------------------------
+# Notes
+# -----------------------------------------------------------
+#
+# Supported Cisco firmware naming conventions:
+#   Cat9300 / Cat9500  : cat9k_iosxe.<ver>.SPA.bin
+#   Cat9200L           : cat9k_lite_iosxe.<ver>.SPA.bin
+#   ASR1001-HX         : asr1000-universalk9.<ver>.SPA.bin
+#
+# Supported Arista firmware naming conventions:
+#   32-bit platforms   : EOS-<ver>.swi
+#   64-bit platforms   : EOS64-<ver>.swi
+#
+# To find a switch serial:
+#   Arista  : show version | grep Serial
+#   Cisco   : show inventory | grep SN
+#             show version  | grep "Processor board ID"
+#
+# To publish a checksum (do this for every image):
+#   cd firmware && md5sum <file> > <file>.md5
+#   ../check_firmware_hashes.sh
+#
+# -----------------------------------------------------------

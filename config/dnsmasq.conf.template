@@ -1,0 +1,53 @@
+# ============================================================
+# dnsmasq configuration template for Multi-Vendor ZTP Server
+# DO NOT EDIT DIRECTLY — edit .env instead.
+# This file is rendered at container startup by entrypoint.sh
+# using values from docker-compose environment variables.
+# ============================================================
+
+# NOTE: interface= is injected by entrypoint.sh via
+#       /tmp/dnsmasq-interface.conf at startup.
+
+# DHCP range and lease time
+dhcp-range=__DHCP_RANGE_START__,__DHCP_RANGE_END__,__DHCP_SUBNET__,__DHCP_LEASE__
+
+# Default gateway (this laptop)
+dhcp-option=3,__SERVER_IP__
+
+# DNS servers
+dhcp-option=6,__DNS_SERVER__
+
+# ============================================================
+# Vendor-specific Option 67 (Bootstrap URL)
+# dnsmasq matches Option 60 (Vendor Class) sent by the switch
+# and returns the appropriate bootstrap script URL.
+#
+# Arista sends Option 60: "Arista Networks"
+# Cisco  sends Option 60: "ciscopnp" (IOS XE 16.x+)
+#                      or "Cisco Systems" (older IOS XE)
+# ============================================================
+
+# Arista switches
+dhcp-vendorclass=set:arista,Arista Networks
+dhcp-option=tag:arista,67,http://__SERVER_IP__:__HTTP_PORT__/bootstrap/arista
+
+# Cisco switches (IOS XE 16.x+)
+dhcp-vendorclass=set:cisco_pnp,ciscopnp
+dhcp-option=tag:cisco_pnp,67,http://__SERVER_IP__:__HTTP_PORT__/bootstrap/cisco.cfg
+
+# Cisco switches (older IOS XE / fallback vendor string)
+dhcp-vendorclass=set:cisco_sys,Cisco Systems
+dhcp-option=tag:cisco_sys,67,http://__SERVER_IP__:__HTTP_PORT__/bootstrap/cisco.cfg
+
+# Fallback for unknown vendors — serve Arista bootstrap by default
+dhcp-option=67,http://__SERVER_IP__:__HTTP_PORT__/bootstrap/arista
+
+# Logging
+log-dhcp
+log-queries
+
+# DHCP lease file
+dhcp-leasefile=/var/lib/dnsmasq/dnsmasq.leases
+
+# Disable DNS (pure DHCP mode)
+port=0
