@@ -78,7 +78,7 @@ defaults:
 #                 dashboard label when 'description' is absent, and used by
 #                 scripts/backup_switches.py to name backup files.
 #
-#   ip_address    Management address in CIDR form ("172.18.10.11/24").
+#   ip_address    Management address in CIDR form ("172.16.16.11/24").
 #                 Rendered as the OOB Management1 / GigabitEthernet0/0 address.
 #                 When it is identical to mgmt_svi_ip_address the generator
 #                 leaves the OOB port unaddressed — one address cannot live on
@@ -121,8 +121,8 @@ switches:
     platform: eos
     firmware: EOS-4.34.3M.swi
     firmware_md5: ""              # prefer firmware/EOS-4.34.3M.swi.md5
-    ip_address: "172.18.10.11/24"
-    mgmt_svi_ip_address: "172.18.10.11/24"
+    ip_address: "172.16.16.11/24"
+    mgmt_svi_ip_address: "172.16.16.11/24"
     priority: 1
     tags:
       - spine
@@ -134,8 +134,8 @@ switches:
     platform: eos64
     firmware: EOS64-4.34.3M.swi
     firmware_md5: ""
-    ip_address: "172.18.10.12/24"
-    mgmt_svi_ip_address: "172.18.10.12/24"
+    ip_address: "172.16.16.12/24"
+    mgmt_svi_ip_address: "172.16.16.12/24"
     priority: 1                   # parallel with Core-SW-1
     tags:
       - spine
@@ -152,7 +152,7 @@ switches:
     platform: cisco_ios
     firmware: cat9k_iosxe.17.12.05.SPA.bin
     firmware_md5: ""
-    ip_address: "172.18.10.21/24"
+    ip_address: "172.16.16.21/24"
     mgmt_svi_ip_address: "172.18.20.21/24"
     priority: 2
     tags:
@@ -171,7 +171,7 @@ switches:
     platform: cisco_ios
     firmware: cat9k_lite_iosxe.17.12.05.SPA.bin
     firmware_md5: ""
-    ip_address: "172.18.10.31/24"
+    ip_address: "172.16.16.31/24"
     mgmt_svi_ip_address: "172.18.20.31/24"
     priority: 3
     tags:
@@ -184,7 +184,7 @@ switches:
     platform: cisco_ios
     firmware: cat9k_lite_iosxe.17.12.05.SPA.bin
     firmware_md5: ""
-    ip_address: "172.18.10.32/24"
+    ip_address: "172.16.16.32/24"
     mgmt_svi_ip_address: "172.18.20.32/24"
     priority: 3                   # parallel with Access-SW-1
     tags:
