@@ -32,7 +32,7 @@ graph TD
 1.  **Clone the repository**:
     ```bash
     git clone <repository-url>
-    cd arista-ztp
+    cd multivendor-ztp-server
     ```
 
 2.  **Configure the environment and inventory**:
