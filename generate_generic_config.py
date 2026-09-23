@@ -252,9 +252,9 @@ def main():
         # Merge switch specific settings
         hostname = switch.get('hostname', 'generic')
         switch_data['hostname'] = hostname
-        # Use ip_address from inventory as mgmt_ip
-        if 'ip_address' in switch:
-            switch_data['mgmt_ip'] = switch['ip_address']
+        # Use mgmt_oob_ip_address from inventory as mgmt_ip
+        if 'mgmt_oob_ip_address' in switch:
+            switch_data['mgmt_ip'] = switch['mgmt_oob_ip_address']
         
         tags = switch.get('tags') or []
         switch_data['tags'] = tags
@@ -284,12 +284,12 @@ def main():
                 
         switch_data['mgmt_svi_ip_address'] = switch.get('mgmt_svi_ip_address', '')
         # Always define it: templates run under StrictUndefined, and a switch
-        # without an 'ip_address' in inventory (e.g. the generic fallback)
+        # without a 'mgmt_oob_ip_address' in inventory (e.g. the generic fallback)
         # would otherwise blow up on {% if mgmt_ip %}.
         switch_data.setdefault('mgmt_ip', '')
 
         # inventory.yaml carries ONE address per switch (the in-band SVI), and
-        # commonly repeats it in both ip_address and mgmt_svi_ip_address. That
+        # commonly repeats it in both mgmt_oob_ip_address and mgmt_svi_ip_address. That
         # used to emit the same address on Management1 AND the SVI. Management1
         # is the OOB port on a different network, so it gets no address here.
         if (switch_data.get('mgmt_svi_ip_address')

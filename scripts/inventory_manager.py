@@ -215,7 +215,7 @@ class InventoryManager:
         Add or update a switch entry and persist to YAML.
 
         An update MERGES into the existing entry — replacing it outright used to
-        silently drop fields this API does not know about (ip_address,
+        silently drop fields this API does not know about (mgmt_oob_ip_address,
         mgmt_svi_ip_address, vars_file, ...) that the config generator needs.
         """
         serial = str(serial).upper().strip()

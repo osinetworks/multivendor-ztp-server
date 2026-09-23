@@ -66,7 +66,7 @@ essentials:
   refused, however it was selected.
 - `firmware` — image filename in `firmware/`.
 - `priority` — provisioning order.
-- `ip_address` / `mgmt_svi_ip_address` — management addressing, in CIDR form.
+- `mgmt_oob_ip_address` / `mgmt_svi_ip_address` — management addressing, in CIDR form.
 
 > [!IMPORTANT]
 > **Provisioning priorities**

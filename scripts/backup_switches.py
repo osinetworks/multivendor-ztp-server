@@ -89,9 +89,9 @@ def main():
     for switch in switches:
         # inventory.yaml uses 'hostname'; the template documents 'description'
         hostname = switch.get("hostname") or switch.get("description")
-        ip_cidr = switch.get("ip_address")
+        ip_cidr = switch.get("mgmt_oob_ip_address")
         if not hostname or not ip_cidr:
-            print(f"- Skipping {switch.get('serial','?')}: no hostname/ip_address in inventory")
+            print(f"- Skipping {switch.get('serial','?')}: no hostname/mgmt_oob_ip_address in inventory")
             continue
 
         ip = get_ip(ip_cidr)

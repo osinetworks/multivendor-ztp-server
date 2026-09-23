@@ -380,27 +380,71 @@ def verify_dst_image_md5(firmware_file, src_md5):
         return True   
 
 
+def _run_via_eem(applet_name, actions, max_run=600):
+    """
+    Run a short command sequence through a throwaway EEM applet instead of
+    cli.execute().
+
+    cli.execute() is a single blocking exec-mode call: it has no timeout=
+    or wait_for_string= keyword arguments (those don't exist on the real
+    Cisco Guest Shell 'cli' module — passing them raises TypeError, which
+    used to be silently swallowed by a broad except here and made the
+    whole ZTP run abort). An EEM applet can wait for a prompt via its own
+    'pattern' action and has its own 'maxrun', so route anything
+    interactive or long-running through one, the same way
+    deploy_eem_upgrade_script() already does for the firmware install.
+
+    Returns the applet's textual output (best-effort — 'event manager run'
+    output capture is not guaranteed), or "" if the applet could not be
+    configured or produced no output.
+    """
+    eem_commands = [
+        f"event manager applet {applet_name}",
+        f"event none maxrun {max_run}",
+        'action 001 cli command "enable"',
+    ] + actions
+    try:
+        cli.configurep(eem_commands)
+    except Exception as e:
+        log(f"ERROR configuring EEM applet {applet_name}: {e}")
+        return ""
+    try:
+        result = cli.cli(f"event manager run {applet_name}")
+    except Exception as e:
+        log(f"EEM applet {applet_name} run raised (may be expected): {e}")
+        result = ""
+    finally:
+        try:
+            cli.configure(f"no event manager applet {applet_name}")
+        except Exception:
+            pass
+    return result or ""
+
+
 def remove_inactive_packages(serial):
     """
     Run 'install remove inactive' to free flash before upgrade.
-    EEM-based cleanup deploy_eem_cleanup_script(),
-    but executed directly via cli.execute() since we have Guest Shell.
+
+    This command raises a '[y/n]' confirmation prompt. cli.execute() cannot
+    answer it — it isn't interactive — so the prompt is answered by an EEM
+    applet via _run_via_eem() instead.
     """
     log("Removing inactive install packages to free flash space...")
     notify_server(serial, "firmware_status", "removing_inactive")
-    try:
-        result = cli.execute("install remove inactive", wait_for_string="[y/n]")
-        result2 = cli.execute("y")
-        full = (result or "") + (result2 or "")
-        log(f"Remove inactive: {full}")
-        if any(x in full.lower() for x in ["success", "completed", "no inactive"]):
-            log("Inactive packages removed ✓")
-        else:
-            log("WARNING: 'install remove inactive' may not have completed cleanly — continuing")
-        return True
-    except Exception as e:
-        log(f"ERROR during install remove inactive: {e}")
-        return True   # Non-fatal
+    result = _run_via_eem(
+        "ztp-cleanup",
+        [
+            'action 002 cli command "install remove inactive" pattern "[y/n]"',
+            'action 003 cli command "y"',
+        ],
+        max_run=300,
+    )
+    log(f"Remove inactive: {result}")
+    if any(x in result.lower() for x in ["success", "completed", "no inactive"]):
+        log("Inactive packages removed ✓")
+    else:
+        log("WARNING: 'install remove inactive' may not have completed cleanly — continuing")
+    return True   # Non-fatal
 
 
 def download_firmware(serial, firmware_file, src_md5=None):
@@ -455,17 +499,18 @@ def download_firmware(serial, firmware_file, src_md5=None):
     log(f"Copying firmware via IOS XE CLI: {copy_url} → {flash_dest}")
     log("This may take 10-20 minutes for large images...")
     notify_server(serial, "firmware_status", "downloading")
-    try:
-        result = cli.execute(f"copy {copy_url} {flash_dest}", timeout=1800)
-        log(f"Copy result:\n{result}")
-        result_lower = (result or "").lower()
-        if any(x in result_lower for x in ["error", "failed", "timed out", "xxx"]):
-            log("ERROR: Firmware copy reported failure")
-            notify_server(serial, "firmware_failed", "copy_failed")
-            return False
-    except Exception as e:
-        log(f"ERROR copying firmware: {e}")
-        notify_server(serial, "firmware_failed", f"copy_error: {e}")
+    # A large image copy can run well past cli.execute()'s own internal RPC
+    # timeout. Run it through an EEM applet instead — 'maxrun' gives it real
+    # headroom, and 'file prompt quiet' (set above) keeps it non-interactive.
+    result_lower = _run_via_eem(
+        "ztp-fw-copy",
+        [f'action 002 cli command "copy {copy_url} {flash_dest}"'],
+        max_run=1800,
+    ).lower()
+    log(f"Copy result:\n{result_lower}")
+    if any(x in result_lower for x in ["error", "failed", "timed out", "xxx"]):
+        log("ERROR: Firmware copy reported failure")
+        notify_server(serial, "firmware_failed", "copy_failed")
         return False
 
     if not firmware_on_flash(firmware_file):
@@ -568,7 +613,10 @@ def install_firmware(serial, firmware_file):
         cmd = f"install add file flash:{firmware_file} activate commit"
         log(f"Running: {cmd}")
         log("Switch will reload automatically during 'activate' — session may drop...")
-        result = cli.execute(cmd, timeout=1800)
+        # No timeout= kwarg — cli.execute() doesn't support one. If this
+        # blocks too long or the session drops on reload, the except below
+        # (session/socket/connect/eof) or the EEM fallback handles it.
+        result = cli.execute(cmd)
         log(f"Install result:\n{result}")
         result_lower = (result or "").lower()
         if "error" in result_lower or "failed" in result_lower:

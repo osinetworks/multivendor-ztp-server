@@ -12,6 +12,8 @@
 !.env.example
 secrets.yaml
 
+b_1714_programmability_cg.pdf
+
 # --- Site variable files (contain password hashes) ---
 # Commit config.yaml.template instead.
 config/config.yaml
